@@ -791,7 +791,7 @@ void AuctionHouseBot::Initialize()
     if (AHBSeller)
     {
         QueryResult results = QueryResult(NULL);
-        char npcQuery[] = "SELECT distinct item FROM npc_vendor";
+        char npcQuery[] = "SELECT distinct item FROM npc_vendor where maxcount = 0";
         results = WorldDatabase.Query(npcQuery);
         if (results)
         {
