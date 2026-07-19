@@ -251,7 +251,7 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
         }
 
         std::set<uint32>::iterator it = auctionsGuidsToConsider.begin();
-        std::advance(it, 0);
+        std::advance(it, urand(0, static_cast<uint32>(auctionsGuidsToConsider.size() - 1)));
         uint32 auctionID = *it;
         AuctionEntry* auction = auctionHouseObject->GetAuction(auctionID);
         
@@ -384,49 +384,64 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
             continue;
         }
 
-        //
-        // Calculate our bid
-        //
+        bool performBuyout = auction->buyout > 0 && auction->buyout <= maximumBid && urand(1, maximumBid) > auction->buyout;
 
-        double bidRate = static_cast<double>(urand(1, 100)) / 100;
-        double bidValue = currentPrice + ((maximumBid - currentPrice) * bidRate);
-        uint32 bidPrice = static_cast<uint32>(bidValue);
-
-
-        //
-        // Check our bid is high enough to be valid. If not, correct it to minimum.
-        //
-        uint32 minimumOutbid = auction->GetAuctionOutBid();
-        if ((currentPrice + minimumOutbid) > bidPrice)
+        if (config->DebugOutBuyer && auction->buyout > 0 && auction->buyout <= maximumBid)
         {
-            bidPrice = static_cast<uint32>(currentPrice + minimumOutbid);
+            double buyoutChance = 100.0 * (maximumBid - auction->buyout) / maximumBid;
+            LOG_INFO("module", "AHBot [{}]: Buyout Chance: {}%, Buyout Selected: {}", _id, buyoutChance, performBuyout);
         }
 
-        if (bidPrice > maximumBid)
+        uint32 minimumOutbid = auction->GetAuctionOutBid();
+        uint64 minimumBid = auction->bid ? static_cast<uint64>(currentPrice) + minimumOutbid : currentPrice;
+
+        if (!performBuyout && auction->buyout > 0 && minimumBid >= auction->buyout)
+        {
+            performBuyout = true;
+
+            if (config->TraceBuyer)
+            {
+                LOG_INFO("module", "AHBot [{}]: Minimum bid reaches buyout, forcing buyout.", _id);
+            }
+        }
+
+        if (!performBuyout && minimumBid > maximumBid)
         {
             if (config->TraceBuyer)
             {
-                LOG_INFO("module", "AHBot [{}]: Bid was above bidMax for item={} AH={}", _id, auction->item_guid.ToString(), config->GetAHID());
+                LOG_INFO("module", "AHBot [{}]: Minimum bid was above bidMax for item={} AH={}", _id, auction->item_guid.ToString(), config->GetAHID());
             }
-            bidPrice = static_cast<uint32>(maximumBid);
+            continue;
         }
 
-        if (config->DebugOutBuyer)
+        uint32 bidPrice = static_cast<uint32>(minimumBid);
+
+        if (!performBuyout)
         {
-            LOG_INFO("module", "-------------------------------------------------");
-            LOG_INFO("module", "AHBot [{}]: Bid Rate: {}", _id, bidRate);
-            LOG_INFO("module", "AHBot [{}]: Bid Value: {}", _id, bidValue);
-            LOG_INFO("module", "AHBot [{}]: Bid Price: {}", _id, bidPrice);
-            LOG_INFO("module", "AHBot [{}]: Minimum Outbid: {}", _id, minimumOutbid);
-            LOG_INFO("module", "-------------------------------------------------");
+            double bidChance = 100.0 * (maximumBid - bidPrice) / maximumBid;
+            bool placeBid = urand(1, maximumBid) > bidPrice;
+
+            if (config->DebugOutBuyer)
+            {
+                LOG_INFO("module", "-------------------------------------------------");
+                LOG_INFO("module", "AHBot [{}]: Bid Chance: {}%", _id, bidChance);
+                LOG_INFO("module", "AHBot [{}]: Bid Selected: {}", _id, placeBid);
+                LOG_INFO("module", "AHBot [{}]: Bid Price: {}", _id, bidPrice);
+                LOG_INFO("module", "AHBot [{}]: Minimum Outbid: {}", _id, minimumOutbid);
+                LOG_INFO("module", "-------------------------------------------------");
+            }
+
+            if (!placeBid)
+            {
+                continue;
+            }
         }
-           
 
         //
         // Check whether we do normal bid, or buyout
         //
 
-        if ((bidPrice < auction->buyout) || (auction->buyout == 0))
+        if (!performBuyout)
         {
             //
             // Return money to last bidder.
