@@ -30,6 +30,9 @@
 #include "AuctionHouseBotCommon.h"
 #include "AuctionHouseSearcher.h"
 
+#include <limits>
+#include <vector>
+
 using namespace std;
 
 AuctionHouseBot::AuctionHouseBot(uint32 account, uint32 id)
@@ -251,7 +254,74 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
         }
 
         std::set<uint32>::iterator it = auctionsGuidsToConsider.begin();
-        std::advance(it, urand(0, static_cast<uint32>(auctionsGuidsToConsider.size() - 1)));
+        std::vector<std::pair<uint32, uint64>> weightedCandidates;
+        uint64 totalWeight = 0;
+
+        for (uint32 candidateAuctionId : auctionsGuidsToConsider)
+        {
+            AuctionEntry* candidateAuction = auctionHouseObject->GetAuction(candidateAuctionId);
+
+            // Base chance for a well priced item.
+            double candidateChance = 5.0;
+
+            if (candidateAuction && candidateAuction->buyout > 0)
+            {
+                Item* candidateItem = sAuctionMgr->GetAItem(candidateAuction->item_guid);
+                ItemTemplate const* candidatePrototype = sObjectMgr->GetItemTemplate(candidateAuction->item_template);
+
+                if (candidateItem && candidatePrototype)
+                {
+                    uint64 candidateBasePrice = static_cast<uint64>(config->UseBuyPriceForBuyer ? candidatePrototype->BuyPrice : candidatePrototype->SellPrice);
+                    uint64 candidateMaximumBid = candidateBasePrice * candidateItem->GetCount() * config->GetBuyerPrice(candidatePrototype->Quality);
+
+                    if (candidateMaximumBid > 0)
+                    {
+                        double buyoutDistance = (static_cast<double>(candidateMaximumBid) - static_cast<double>(candidateAuction->buyout)) / static_cast<double>(candidateMaximumBid);
+                        candidateChance += buyoutDistance * 100.0;
+                    }
+                }
+            }
+
+            if (candidateChance <= 0.0)
+            {
+                candidateChance = 0.1;
+            }
+            else if (candidateChance > 100.0)
+            {
+                candidateChance = 100.0;
+            }
+
+            uint64 candidateWeight = static_cast<uint64>(candidateChance * 1000.0);
+            weightedCandidates.push_back(std::make_pair(candidateAuctionId, candidateWeight));
+            totalWeight += candidateWeight;
+        }
+
+        if (totalWeight > 0)
+        {
+            uint32 cappedTotalWeight = totalWeight > static_cast<uint64>(std::numeric_limits<uint32>::max()) ? std::numeric_limits<uint32>::max() : static_cast<uint32>(totalWeight);
+            uint64 target = urand(1, cappedTotalWeight);
+            uint64 runningWeight = 0;
+            uint32 selectedAuctionId = weightedCandidates.front().first;
+
+            for (std::pair<uint32, uint64> const& weightedCandidate : weightedCandidates)
+            {
+                runningWeight += weightedCandidate.second;
+
+                if (target <= runningWeight)
+                {
+                    selectedAuctionId = weightedCandidate.first;
+                    break;
+                }
+            }
+
+            it = auctionsGuidsToConsider.find(selectedAuctionId);
+        }
+
+        if (it == auctionsGuidsToConsider.end())
+        {
+            it = auctionsGuidsToConsider.begin();
+        }
+
         uint32 auctionID = *it;
         AuctionEntry* auction = auctionHouseObject->GetAuction(auctionID);
         
