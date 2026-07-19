@@ -276,8 +276,7 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
 
                     if (candidateMaximumBid > 0)
                     {
-                        double buyoutDistance = (static_cast<double>(candidateMaximumBid) - static_cast<double>(candidateAuction->buyout)) / static_cast<double>(candidateMaximumBid);
-                        candidateChance += buyoutDistance * 100.0;
+                        candidateChance *= static_cast<double>(candidateMaximumBid) / static_cast<double>(candidateAuction->buyout);
                     }
                 }
             }
