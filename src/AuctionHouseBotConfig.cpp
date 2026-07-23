@@ -2519,7 +2519,7 @@ void AHBConfig::InitializeFromSql(std::set<uint32> botsIds)
 
     NpcItems.clear();
 
-    QueryResult npcResults = WorldDatabase.Query("SELECT distinct item FROM npc_vendor");
+    QueryResult npcResults = WorldDatabase.Query("SELECT DISTINCT item FROM npc_vendor WHERE maxcount = 0");
 
     if (npcResults)
     {
